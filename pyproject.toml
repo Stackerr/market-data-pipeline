@@ -17,6 +17,7 @@ dependencies = [
     "openpyxl>=3.1.5",
     "fastexcel>=0.15.1",
     "clickhouse-connect>=0.7.1",
+    "beautifulsoup4>=4.13.5",
 ]
 
 [dependency-groups]

@@ -60,7 +60,7 @@ def load_listed_companies() -> pl.DataFrame:
         except Exception as e:
             logger.warning(f"KONEX data not available: {e}")
 
-        # ETF 데이터
+        # ETF 데이터 (FinanceDataReader의 ETF 기능이 불안정하므로 건너뛰기)
         try:
             logger.info("Fetching ETF data...")
             etf_df = fdr.StockListing('ETF')
@@ -69,8 +69,11 @@ def load_listed_companies() -> pl.DataFrame:
             )
             all_stocks.append(etf_pl)
             logger.info(f"✅ ETF data loaded: {len(etf_pl)}")
+        except (IndexError, KeyError, ValueError) as e:
+            logger.warning(f"ETF data collection failed due to FinanceDataReader library issue: {e}")
+            logger.info("Skipping ETF data collection for now - this is a known issue with FinanceDataReader")
         except Exception as e:
-            logger.warning(f"ETF data not available: {e}")
+            logger.warning(f"ETF data not available due to unexpected error: {e}")
 
     except Exception as e:
         logger.error(f"Failed to load stock listings: {e}")

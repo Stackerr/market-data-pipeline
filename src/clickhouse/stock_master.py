@@ -123,7 +123,20 @@ class ClickHouseStockMaster:
         try:
             result = self.client.query(query)
             if result.result_rows:
-                columns = [col[0] for col in result.column_types]
+                # ClickHouse column_types는 (name, type) 튜플 리스트이거나 이름만 있을 수 있음
+                if hasattr(result, 'column_names'):
+                    columns = result.column_names
+                elif result.column_types:
+                    # column_types가 튜플 리스트인 경우
+                    if isinstance(result.column_types[0], tuple):
+                        columns = [col[0] for col in result.column_types]
+                    else:
+                        # column_types가 문자열 리스트인 경우
+                        columns = result.column_types
+                else:
+                    logger.warning(f"Could not determine column names for symbol {symbol}")
+                    return None
+
                 return dict(zip(columns, result.result_rows[0]))
             return None
         except Exception as e:
