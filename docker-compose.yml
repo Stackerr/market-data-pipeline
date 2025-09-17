@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: market_data
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: your_password
+      POSTGRES_PASSWORD: 1q2w3e4r
     ports:
       - "5432:5432"
     volumes:
@@ -17,5 +17,27 @@ services:
       timeout: 10s
       retries: 3
 
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: market_data_clickhouse
+    environment:
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: 1q2w3e4r
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "8123:8123"  # HTTP interface
+      - "9000:9000"  # Native client port
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_data:
+  clickhouse_data:
+  clickhouse_logs:

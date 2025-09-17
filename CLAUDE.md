@@ -8,9 +8,13 @@ This is a market data pipeline project (market-data-pipeline) focused on collect
 
 ## Current State
 
-This repository is currently in its initial state with only basic documentation files:
-- README.md: Contains project description in Korean
-- LICENSE: MIT license
+**IMPORTANT: Always check progress.md for the latest project status and current work state.**
+
+The project has evolved beyond initial setup. See `progress.md` for detailed current status, completed tasks, and next steps. Key current state:
+- PostgreSQL and ClickHouse Docker setup completed
+- Python project structure established
+- Database connection modules implemented
+- Active development in progress
 
 ## Development Setup
 
@@ -23,6 +27,24 @@ This repository is currently in its initial state with only basic documentation 
 - ALWAYS use `polars` for data processing and manipulation
 - Never use `pandas` for new code
 - Polars provides better performance and memory efficiency
+
+**IMPORTANT: Test-Driven Development (TDD) Rule**
+- ALWAYS follow TDD principles when implementing new features
+- Write tests FIRST, then implement the functionality
+- Follow the Red-Green-Refactor cycle:
+  1. Red: Write a failing test
+  2. Green: Write minimal code to make the test pass
+  3. Refactor: Improve code while keeping tests passing
+- All new code must have corresponding tests before implementation
+- Use pytest as the testing framework
+
+**IMPORTANT: Git Workflow Rules**
+- ALWAYS work on feature branches, never directly on main
+- Automatically create new branches for each feature/task
+- ALL code changes must be automatically committed to Git
+- ALWAYS push changes to remote repository for change history tracking
+- Use descriptive commit messages following conventional commit format
+- Maintain clean Git history with proper branching strategy
 
 ### For Python-based pipeline:
 - Set up virtual environment

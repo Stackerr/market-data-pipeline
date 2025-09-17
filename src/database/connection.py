@@ -1,14 +1,12 @@
 import os
 from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.ext.declarative import declarative_base
 from dotenv import load_dotenv
 import logging
+import clickhouse_connect
 
 # Load environment variables
 load_dotenv()
-
-Base = declarative_base()
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +48,7 @@ class DatabaseConnection:
 
     def create_tables(self):
         """Create all tables defined in models"""
+        from src.storage.models import Base
         Base.metadata.create_all(bind=self.engine)
         logger.info("Database tables created successfully")
 
@@ -69,3 +68,23 @@ def get_db_session() -> Session:
         yield session
     finally:
         session.close()
+
+
+def get_clickhouse_client():
+    """Get ClickHouse client connection"""
+    ch_host = os.getenv("CLICKHOUSE_HOST", "localhost")
+    ch_port = int(os.getenv("CLICKHOUSE_PORT", "8123"))
+    ch_user = os.getenv("CLICKHOUSE_USER", "default")
+    ch_password = os.getenv("CLICKHOUSE_PASSWORD", "")
+    ch_database = os.getenv("CLICKHOUSE_DATABASE", "market_data")
+
+    client = clickhouse_connect.get_client(
+        host=ch_host,
+        port=ch_port,
+        username=ch_user,
+        password=ch_password,
+        database=ch_database
+    )
+
+    logger.info(f"ClickHouse connection established to {ch_host}:{ch_port}/{ch_database}")
+    return client
