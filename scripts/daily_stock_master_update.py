@@ -19,6 +19,7 @@ sys.path.insert(0, str(project_root))
 
 from src.clickhouse.stock_master import ClickHouseStockMaster
 from src.crawlers.krx_delisted_crawler import KRXDelistedCrawler
+from src.crawlers.krx_new_listing_crawler import KRXNewListingCrawler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,6 +38,7 @@ class DailyStockMasterUpdater:
     def __init__(self):
         self.stock_master = ClickHouseStockMaster()
         self.krx_crawler = KRXDelistedCrawler()
+        self.new_listing_crawler = KRXNewListingCrawler()
         self.data_dir = project_root / "data" / "daily_batch"
         self.data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -113,8 +115,43 @@ class DailyStockMasterUpdater:
             logger.error(f"❌ Failed to update listed stocks: {e}")
             return False
 
+    def sync_all_delisted_stocks(self, start_year: int = 1990) -> bool:
+        """전체 상장폐지 종목 데이터 동기화 (일간 배치용)"""
+        logger.info(f"🔄 Syncing all delisted stocks from {start_year}...")
+
+        try:
+            # KRX에서 전체 상장폐지 데이터 크롤링
+            delisted_df = self.krx_crawler.crawl_all_markets_full_sync(start_year=start_year)
+
+            if delisted_df.is_empty():
+                logger.info("ℹ️ No delisted data found in full sync")
+                return True
+
+            # Parquet으로 백업 저장
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.data_dir / f"all_delisted_sync_{timestamp}.parquet"
+            delisted_df.write_parquet(backup_path)
+            logger.info(f"💾 All delisted data backed up to: {backup_path}")
+
+            # ClickHouse 스키마에 맞게 변환
+            processed_df = self._process_delisted_data(delisted_df)
+
+            # ClickHouse에 업데이트 (기존에 없는 것만 추가)
+            updated_count = self._upsert_stocks(processed_df, is_active=False)
+
+            logger.info(f"📊 Full delisted sync results:")
+            logger.info(f"  🔍 Total found: {len(delisted_df)}")
+            logger.info(f"  ✅ Added: {updated_count}")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ Failed to sync all delisted stocks: {e}")
+            return False
+
     def update_delisted_stocks(self) -> bool:
-        """상장폐지 종목 데이터 업데이트"""
+        """상장폐지 종목 데이터 업데이트 (레거시 메서드)"""
+        logger.warning("Using legacy update_delisted_stocks - consider using sync_all_delisted_stocks")
         logger.info("🔄 Starting delisted stocks update...")
 
         try:
@@ -142,6 +179,40 @@ class DailyStockMasterUpdater:
 
         except Exception as e:
             logger.error(f"❌ Failed to update delisted stocks: {e}")
+            return False
+
+    def sync_all_listings(self, start_year: int = 2020) -> bool:
+        """전체 상장 데이터 동기화 (일간 배치용)"""
+        logger.info(f"🔄 Syncing all listings from {start_year}...")
+
+        try:
+            # 전체 기간 신규상장 크롤링
+            new_listings_df = self.new_listing_crawler.crawl_all_listings_full_sync(start_year=start_year)
+
+            if new_listings_df.is_empty():
+                logger.info("ℹ️ No listings found in full sync")
+                return True
+
+            # Parquet으로 백업 저장
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.data_dir / f"all_listings_sync_{timestamp}.parquet"
+            new_listings_df.write_parquet(backup_path)
+            logger.info(f"💾 All listings data backed up to: {backup_path}")
+
+            # 신규상장 처리 (기존에 없는 것만 추가)
+            stats = self.stock_master.process_new_listings(new_listings_df)
+
+            logger.info(f"📊 Full listings sync results:")
+            logger.info(f"  🔍 Total found: {len(new_listings_df)}")
+            logger.info(f"  ✅ Added: {stats['added']}")
+            logger.info(f"  ⏭️ Skipped (existing): {stats['skipped']}")
+            logger.info(f"  ❌ Errors: {stats['errors']}")
+
+            # 에러가 없으면 성공
+            return stats['errors'] == 0
+
+        except Exception as e:
+            logger.error(f"❌ Failed to sync all listings: {e}")
             return False
 
     def _process_delisted_data(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -265,21 +336,23 @@ class DailyStockMasterUpdater:
         logger.info(f"🚀 Starting daily stock master update at {start_time}")
 
         try:
-            # 1. 상장 종목 업데이트
+            # 1. 활성 상장 종목 업데이트 (FinanceDataReader)
             listed_success = self.update_listed_stocks()
 
-            # 2. 상장폐지 종목 업데이트 (실패해도 계속 진행)
-            delisted_success = True  # KRX 크롤링이 불안정하므로 일단 skip
-            logger.info("⚠️ Skipping delisted stocks crawling due to KRX access limitations")
+            # 2. 전체 상장 이력 동기화 (KRX 크롤링)
+            new_listing_success = self.sync_all_listings(start_year=2000)
 
-            # 3. 최적화 및 리포트
+            # 3. 전체 상장폐지 이력 동기화 (KRX 크롤링)
+            delisted_success = self.sync_all_delisted_stocks(start_year=1990)
+
+            # 4. 최적화 및 리포트
             final_stats = self.optimize_and_report()
 
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
 
-            # 최종 결과
-            success = listed_success  # delisted_success는 옵셔널
+            # 최종 결과 (모든 동기화 작업이 성공해야 함)
+            success = listed_success and new_listing_success and delisted_success
 
             if success:
                 logger.info(f"✅ Daily update completed successfully in {duration:.1f} seconds")

@@ -1,102 +1,43 @@
 # Session Handoff Guide
 
-## 🔄 New Session Startup Checklist
+## 🔄 New Session Startup (Quick Start)
 
-터미널을 재시작한 후 다음 세션에서 이전 작업을 이어받기 위해 필요한 단계들:
-
-### 1. 환경 확인
+### 1. 환경 재시작
 ```bash
-# 현재 브랜치 확인
-git branch
-
-# 작업 중인 브랜치로 이동 (필요시)
-git checkout feature/clickhouse-stock-master
-
-# 최신 상태 확인
-git status
-git log --oneline -5
-```
-
-### 2. 프로젝트 상태 파악
-```bash
-# 프로젝트 진행상황 확인
+# 프로젝트 상태 파악
 cat progress.md
 
-# 환경 변수 설정 확인
-cat .env
-
-# ClickHouse 서비스 상태 확인
+# Docker 서비스 확인
 docker ps | grep clickhouse
-```
 
-### 3. 개발 환경 재설정
-```bash
-# Python 환경 활성화 (uv 사용)
+# Python 환경 활성화
 uv sync
-
-# 테스트 실행으로 환경 검증
-uv run python -m pytest tests/test_stock_master_clickhouse.py -v
-
-# ClickHouse 연결 테스트
-uv run python scripts/setup_stock_master_clickhouse.py
 ```
 
-### 4. 데이터 상태 확인
+### 2. 현재 상태 확인
 ```bash
-# 현재 데이터 상태 확인
+# 간단한 연결 테스트
 uv run python -c "
 from src.clickhouse.stock_master import ClickHouseStockMaster
-sm = ClickHouseStockMaster()
-stats = sm.get_stock_count()
-print('Current stock counts:', stats)
+print('✅ ClickHouse 연결:', ClickHouseStockMaster().get_stock_count())
 "
 ```
 
-## 📋 현재 상황 요약
+## 🔍 Claude Code 컨텍스트
 
-### ✅ 완료된 사항 (최신 업데이트)
-- ClickHouse 기반 stock_master 시스템 구축 완료
-- **총 4,549개 종목** 데이터 로딩 완료 (활성: 2,845 + 상폐: 1,704)
-- TDD 테스트 13개 모두 통과
-- **모든 알려진 버그 수정 완료** (ETF, get_stock_by_symbol, 컬럼 매핑)
-- KRX 크롤러 개발 완료 (3개 시장 지원)
-- 일간 배치 파이프라인 구축 완료
-- feature/clickhouse-stock-master 브랜치 원격 저장소 푸시 완료
-
-### 🎯 다음 우선순위 작업
-1. **GitHub PR 생성** 및 리뷰
-2. **주가 데이터 수집** 구현 (시계열 데이터)
-3. **스케줄링 시스템** 구축 (cron/Airflow)
-4. **KRX 크롤러 안정화** (프로덕션 환경)
-5. **모니터링 시스템** 구축 (데이터 품질 검증)
-
-## 💡 개선 제안 사항
-
-### 즉시 구현 가능
-- ETF 데이터 수집 로직 강화
-- 에러 핸들링 개선
-- 로깅 레벨 최적화
-
-### 중장기 계획
-- 스케줄러 구현 (일간 데이터 수집)
-- 데이터 품질 모니터링
-- API 엔드포인트 구축
-- 백테스팅 시스템 연동
-
-## 🔍 Claude Code에게 제공할 컨텍스트
-
-### 새 세션 시작 시 말할 내용:
+### 새 세션 시작 시:
 ```
-"이전 세션에서 ClickHouse 기반 stock master 시스템을 완전히 구축했습니다.
-progress.md와 SESSION_HANDOFF.md를 먼저 읽어서 현재 상황을 파악한 후,
-다음 작업을 진행해주세요."
+"progress.md와 session_handoff.md를 읽고 Phase 1.3 가격 데이터 초기 적재 시스템 TDD 구현을 시작해주세요."
 ```
 
-### 추가 컨텍스트 (필요시):
-1. "모든 알려진 버그가 수정되었고, 프로덕션 레디 상태입니다"
-2. "총 4,549개 종목 데이터가 ClickHouse에 저장되어 있습니다"
-3. "일간 배치 파이프라인이 구축되어 있습니다"
-4. "모든 작업은 TDD 방식으로 진행하고 변경사항은 자동 커밋/푸시"
+### 주요 컨텍스트:
+- **현재 작업**: Phase 1.3 (가격 데이터 초기 적재) TDD 구현 시작 예정
+- **완료 상태**:
+  - Phase 1.2 (상장폐지 데이터) 완성
+  - 프로젝트 구조 대대적 정리 완료 (2025-09-19)
+  - scripts/, setup/, data/ 폴더 정리 및 문서화 완료
+- **개발 규칙**: TDD 필수, uv run python 사용, polars 사용
+- **아키텍처**: ClickHouse dual client (HTTP + clickhouse-connect)
 
 ## 📱 메모라이즈 기능 사용법
 
@@ -122,7 +63,56 @@ Claude Code에서 `#` 명령어로 현재 프로젝트 상태를 저장하는 �
 4. **배포 전**: 릴리즈 준비 상태 저장
 
 ---
-Last Updated: 2025-09-17 18:10:00
-Branch: feature/clickhouse-stock-master
-Last Commit: b7aff0e (feat: Complete stock master system with delisted data integration)
-Current Status: 🟢 Production Ready - All systems operational
+Last Updated: 2025-09-19
+Branch: main
+Current Status: 🎯 프로젝트 구조 완전 정리 완료, Phase 1.3 작업 준비 완료
+
+### 2025-09-20 세션 완료 사항 (프로젝트 구조 완전 정리):
+
+#### ✅ 1차: 기본 구조 정리 (09-19)
+- **프로젝트 구조 대대적 정리**: scripts/, setup/, data/ 폴더 완전 재구성
+- **Legacy 파일 제거**: 5개 미사용 스크립트 정리
+- **문서화 완성**: setup/README.md, data/README.md, src/README.md 작성
+
+#### ✅ 2차: 완전 정리 및 일관성 달성 (09-20)
+- **progress.md 언어 통일**: 영어/한국어 혼용 → 완전 한국어 통일
+- **src/ 구조 최적화**: 빈 폴더 제거, legacy PostgreSQL 코드 제거
+- **setup/ → src/setup/**: 일회성 설정 스크립트를 src/ 내로 이동
+- **scripts/ 일관성 완성**: sync_new_listings.py ↔ sync_delisted_stocks.py 완벽 대칭 구조
+- **포괄적 문서화**: PROJECT_STRUCTURE.md, scripts/README.md 추가
+
+#### 📂 최종 정리된 구조:
+```
+src/          # Library Layer (라이브러리 코드)
+├── clickhouse/     # ClickHouse 클라이언트
+├── crawlers/       # 웹 크롤링 모듈
+├── setup/          # 일회성 초기 설정
+└── README.md
+
+scripts/      # Execution Layer (실행 스크립트)
+├── sync_new_listings.py     # 신규 상장 동기화 (새로 생성)
+├── sync_delisted_stocks.py  # 상장폐지 동기화
+├── initial_setup.py         # 일회성 작업만
+├── check_stock_data.py      # 데이터 현황 확인
+├── daily_stock_master_update.py  # 일간 배치
+└── README.md
+
+data/         # 데이터 저장소
+├── raw/, initial_setup/, daily_batch/
+└── README.md
+
+PROJECT_STRUCTURE.md  # 전체 구조 철학
+```
+
+### 📋 다음 세션 즉시 시작 가능한 작업:
+- 🎯 **Phase 1.3 TDD 구현**: ClickHouse 가격 데이터 테이블 스키마 설계
+- 🎯 **FinanceDataReader 연동**: 가격 데이터 수집 로직 TDD 구현
+- 🎯 **src/clickhouse/price_client.py**: 가격 데이터 전용 클라이언트 완성
+
+### 🏗️ 완벽하게 준비된 환경:
+- ✅ ClickHouse 환경 구축 완료 (4,549개 종목)
+- ✅ 일관된 동기화 시스템 (신규 상장 ↔ 상장폐지)
+- ✅ TDD 테스트 환경 구축 완료
+- ✅ Layered Architecture 완성 (src/ ↔ scripts/)
+- ✅ 완전히 정리된 프로젝트 구조
+- ✅ 포괄적인 문서화 완성 (5개 README 파일)

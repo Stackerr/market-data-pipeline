@@ -110,6 +110,87 @@ class ClickHouseStockMaster:
             logger.error(f"Failed to update delisting date for {symbol}: {e}")
             return False
 
+    def add_new_listing(self, symbol: str, name: str, market: str, listing_date: date) -> bool:
+        """신규상장 종목 추가"""
+        try:
+            # 이미 존재하는지 확인
+            existing = self.get_stock_by_symbol(symbol)
+            if existing:
+                logger.warning(f"Stock {symbol} already exists in stock_master")
+                return False
+
+            # 신규상장 데이터 생성
+            new_stock_df = pl.DataFrame({
+                'symbol': [symbol],
+                'name': [name],
+                'market': [market],
+                'listing_date': [listing_date],
+                'delisting_date': [None],
+                'is_active': [1]
+            })
+
+            inserted_count = self.insert_stocks(new_stock_df)
+            if inserted_count > 0:
+                logger.info(f"Successfully added new listing: {symbol} ({name}) to {market}")
+                return True
+            else:
+                logger.error(f"Failed to add new listing: {symbol}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to add new listing {symbol}: {e}")
+            return False
+
+    def process_new_listings(self, new_listings_df: pl.DataFrame) -> Dict[str, int]:
+        """신규상장 종목들을 일괄 처리"""
+        if new_listings_df.is_empty():
+            logger.info("No new listings to process")
+            return {'added': 0, 'skipped': 0, 'errors': 0}
+
+        # 필수 컬럼 확인
+        required_cols = ['company_code', 'company_name', 'listing_date']
+        missing_cols = [col for col in required_cols if col not in new_listings_df.columns]
+        if missing_cols:
+            logger.error(f"Missing required columns in new listings: {missing_cols}")
+            return {'added': 0, 'skipped': 0, 'errors': len(new_listings_df)}
+
+        stats = {'added': 0, 'skipped': 0, 'errors': 0}
+
+        for row in new_listings_df.iter_rows(named=True):
+            symbol = row['company_code']
+            name = row['company_name']
+            listing_date = row['listing_date']
+
+            # 시장 정보 매핑
+            market = 'KOSPI'  # 기본값
+            if 'market' in row and row['market']:
+                market = row['market']
+            elif 'market_type' in row and row['market_type']:
+                market = row['market_type']
+
+            try:
+                # 이미 존재하는지 확인
+                existing = self.get_stock_by_symbol(symbol)
+                if existing:
+                    logger.debug(f"Stock {symbol} already exists, skipping")
+                    stats['skipped'] += 1
+                    continue
+
+                # 신규상장 추가
+                success = self.add_new_listing(symbol, name, market, listing_date)
+                if success:
+                    stats['added'] += 1
+                    logger.info(f"Added new listing: {symbol} ({name})")
+                else:
+                    stats['errors'] += 1
+
+            except Exception as e:
+                logger.error(f"Error processing new listing {symbol}: {e}")
+                stats['errors'] += 1
+
+        logger.info(f"New listings processing complete: {stats}")
+        return stats
+
     def get_stock_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
         """종목코드로 종목 정보 조회"""
         query = f"""

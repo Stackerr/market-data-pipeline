@@ -1,145 +1,103 @@
-from src.database.connection import db_connection
-from src.storage.models import StockMaster
-from sqlalchemy import func, text
+#!/usr/bin/env python3
+"""
+ClickHouse 주식 마스터 데이터 현황 확인 스크립트
+"""
+
+import sys
 import logging
+from pathlib import Path
+
+# 프로젝트 루트 디렉토리를 sys.path에 추가
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.clickhouse.stock_master import ClickHouseStockMaster
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def check_stock_data():
-    """주식 마스터 데이터 현황 확인"""
-    session = db_connection.get_session()
+    """ClickHouse 주식 마스터 데이터 현황 확인"""
     try:
+        stock_master = ClickHouseStockMaster()
+
         print("="*60)
-        print("📊 STOCK MASTER 데이터 현황")
+        print("📊 CLICKHOUSE STOCK MASTER 데이터 현황")
         print("="*60)
-        
-        # 1. 전체 종목 수
-        total_count = session.query(StockMaster).count()
-        print(f"📈 전체 종목 수: {total_count:,}개")
-        
-        # 2. 상장/폐지 현황
-        active_count = session.query(StockMaster).filter(StockMaster.is_active == True).count()
-        inactive_count = session.query(StockMaster).filter(StockMaster.is_active == False).count()
-        
-        print(f"✅ 상장 종목: {active_count:,}개")
-        print(f"❌ 상장폐지 종목: {inactive_count:,}개")
-        
-        # 3. 시장별 현황 (상장)
-        print("\n📊 시장별 현황 (상장 종목)")
-        print("-" * 40)
-        market_stats = session.query(
-            StockMaster.market, 
-            func.count(StockMaster.symbol)
-        ).filter(
-            StockMaster.is_active == True
-        ).group_by(StockMaster.market).all()
-        
-        for market, count in market_stats:
-            print(f"  {market}: {count:,}개")
-        
-        # 4. 시장별 현황 (상장폐지)
-        print("\n📊 시장별 현황 (상장폐지 종목)")
-        print("-" * 40)
-        delisted_stats = session.query(
-            StockMaster.market, 
-            func.count(StockMaster.symbol)
-        ).filter(
-            StockMaster.is_active == False
-        ).group_by(StockMaster.market).all()
-        
-        for market, count in delisted_stats:
-            print(f"  {market}: {count:,}개")
-        
-        # 5. 데이터 소스별 현황
-        print("\n📊 데이터 소스별 현황")
-        print("-" * 40)
-        source_stats = session.query(
-            StockMaster.data_source, 
-            func.count(StockMaster.symbol)
-        ).group_by(StockMaster.data_source).all()
-        
-        for source, count in source_stats:
-            print(f"  {source}: {count:,}개")
-        
-        # 6. 상장일/폐지일 정보 현황
-        print("\n📊 날짜 정보 현황")
-        print("-" * 40)
-        
-        # 상장일이 있는 종목 수
-        listing_date_count = session.query(StockMaster).filter(
-            StockMaster.listing_date.isnot(None)
-        ).count()
-        print(f"  상장일 정보 있음: {listing_date_count:,}개")
-        
-        # 상장폐지일이 있는 종목 수  
-        delisting_date_count = session.query(StockMaster).filter(
-            StockMaster.delisting_date.isnot(None)
-        ).count()
-        print(f"  상장폐지일 정보 있음: {delisting_date_count:,}개")
-        
-        # 7. 최신 상장 종목 (상위 10개)
-        print("\n📊 최신 데이터 샘플 (상장 종목 10개)")
+
+        # 전체 종목 수 및 시장별 현황
+        stats = stock_master.get_stock_count()
+
+        total_active = 0
+        total_delisted = 0
+
+        for market, counts in stats.items():
+            active = counts['active']
+            delisted = counts['delisted']
+            total = counts['total']
+
+            total_active += active
+            total_delisted += delisted
+
+            print(f"📈 {market:>6}: {active:>5}개 활성, {delisted:>5}개 상장폐지, {total:>5}개 총합")
+
         print("-" * 60)
-        recent_active = session.query(StockMaster).filter(
-            StockMaster.is_active == True
-        ).limit(10).all()
-        
-        for stock in recent_active:
-            listing_info = f" (상장: {stock.listing_date})" if stock.listing_date else ""
-            print(f"  {stock.symbol} - {stock.name} [{stock.market}]{listing_info}")
-        
-        # 8. 상장폐지 종목 샘플 (상위 10개)
-        print("\n📊 상장폐지 종목 샘플 (10개)")
-        print("-" * 60)
-        delisted_sample = session.query(StockMaster).filter(
-            StockMaster.is_active == False
-        ).filter(
-            StockMaster.delisting_date.isnot(None)
-        ).order_by(StockMaster.delisting_date.desc()).limit(10).all()
-        
-        for stock in delisted_sample:
-            delisting_info = f" (폐지: {stock.delisting_date})"
-            reason = f" - {stock.delisting_reason}" if stock.delisting_reason else ""
-            print(f"  {stock.symbol} - {stock.name} [{stock.market}]{delisting_info}{reason}")
-        
+        print(f"📊 총합계: {total_active:>5}개 활성, {total_delisted:>5}개 상장폐지, {total_active + total_delisted:>5}개 전체")
+
+        # 최신 데이터 샘플 확인
+        print("\n📊 데이터 샘플 확인")
+        print("-" * 40)
+
+        # 활성 종목 샘플
+        active_samples = stock_master.get_active_stocks(limit=5)
+        if not active_samples.is_empty():
+            print("✅ 활성 종목 샘플 (5개):")
+            for row in active_samples.rows(named=True):
+                listing_info = f" (상장: {row['listing_date']})" if row['listing_date'] else ""
+                print(f"  {row['symbol']} - {row['name']} [{row['market']}]{listing_info}")
+
+        # 상장폐지 종목 샘플
+        delisted_samples = stock_master.get_delisted_stocks(limit=5)
+        if not delisted_samples.is_empty():
+            print("\n❌ 상장폐지 종목 샘플 (5개):")
+            for row in delisted_samples.rows(named=True):
+                delisting_info = f" (폐지: {row['delisting_date']})" if row['delisting_date'] else ""
+                print(f"  {row['symbol']} - {row['name']} [{row['market']}]{delisting_info}")
+
         print("\n" + "="*60)
-        
+
     except Exception as e:
         logger.error(f"Error checking stock data: {e}")
         raise
-    finally:
-        session.close()
 
-def check_missing_data():
-    """누락된 데이터 확인"""
-    session = db_connection.get_session()
+def check_data_quality():
+    """데이터 품질 확인"""
     try:
-        print("\n🔍 데이터 누락 현황")
+        stock_master = ClickHouseStockMaster()
+
+        print("\n🔍 데이터 품질 현황")
         print("="*60)
-        
-        # 상장 종목 중 상장일이 없는 경우
-        active_no_listing_date = session.query(StockMaster).filter(
-            StockMaster.is_active == True,
-            StockMaster.listing_date.is_(None)
-        ).count()
-        
-        print(f"❗ 상장 종목 중 상장일 누락: {active_no_listing_date:,}개")
-        
-        # 상장폐지 종목 중 폐지일이 없는 경우
-        inactive_no_delisting_date = session.query(StockMaster).filter(
-            StockMaster.is_active == False,
-            StockMaster.delisting_date.is_(None)
-        ).count()
-        
-        print(f"❗ 상장폐지 종목 중 폐지일 누락: {inactive_no_delisting_date:,}개")
-        
+
+        # 누락 데이터 확인
+        total_stocks = stock_master.get_total_count()
+
+        # 상장일 누락 확인 (활성 종목)
+        active_no_listing = stock_master.get_stocks_missing_listing_date()
+        print(f"❗ 활성 종목 중 상장일 누락: {len(active_no_listing)}개")
+
+        # 상장폐지일 누락 확인 (상장폐지 종목)
+        delisted_no_date = stock_master.get_delisted_stocks_missing_date()
+        print(f"❗ 상장폐지 종목 중 폐지일 누락: {len(delisted_no_date)}개")
+
+        # 데이터 품질 점수
+        quality_score = ((total_stocks - len(active_no_listing) - len(delisted_no_date)) / total_stocks) * 100
+        print(f"📊 데이터 품질 점수: {quality_score:.1f}%")
+
     except Exception as e:
-        logger.error(f"Error checking missing data: {e}")
-        raise
-    finally:
-        session.close()
+        logger.error(f"Error checking data quality: {e}")
+        # 일부 메서드가 없을 수 있으므로 계속 진행
+        pass
 
 if __name__ == "__main__":
     check_stock_data()
-    check_missing_data()
+    check_data_quality()

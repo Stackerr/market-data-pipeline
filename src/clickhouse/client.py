@@ -1,4 +1,4 @@
-import subprocess
+import requests
 import polars as pl
 import json
 from pathlib import Path
@@ -9,53 +9,62 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class ClickHouseClient:
-    """ClickHouse 클라이언트 래퍼"""
+    """ClickHouse 클라이언트 래퍼 (HTTP API 사용)"""
 
-    def __init__(self, host='localhost', port=9000, database='market_data'):
+    def __init__(self, host='localhost', port=8123, database='default',
+                 user='default', password='1q2w3e4r'):
         self.host = host
         self.port = port
         self.database = database
+        self.user = user
+        self.password = password
+        self.base_url = f"http://{host}:{port}"
 
-    def execute_query(self, query: str, format='TabSeparatedWithNames'):
+    def execute_query(self, query: str, format='JSON'):
         """쿼리 실행 및 결과 반환"""
-        cmd = [
-            'clickhouse-client',
-            '--host', self.host,
-            '--port', str(self.port),
-            '--database', self.database,
-            '--query', query,
-            '--format', format
-        ]
+        params = {
+            'database': self.database,
+            'query': query,
+            'default_format': format,
+            'user': self.user,
+            'password': self.password
+        }
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return result.stdout
+            response = requests.post(self.base_url, params=params, timeout=30)
+            response.raise_for_status()
 
-        except subprocess.CalledProcessError as e:
+            if format == 'JSON':
+                try:
+                    result = response.json()
+                    return result.get('data', []) if isinstance(result, dict) else result
+                except json.JSONDecodeError:
+                    # JSON이 아닌 경우 텍스트 반환
+                    return response.text
+            else:
+                return response.text
+
+        except requests.RequestException as e:
             logger.error(f"Query execution failed: {e}")
-            logger.error(f"stderr: {e.stderr}")
+            if hasattr(e, 'response') and e.response:
+                logger.error(f"Response: {e.response.text}")
             raise
 
     def query_to_polars(self, query: str) -> pl.DataFrame:
         """쿼리 결과를 Polars DataFrame으로 반환"""
         try:
-            # TSV 형식으로 결과 가져오기
-            result = self.execute_query(query, format='TSVWithNames')
+            # JSON 형식으로 결과 가져오기
+            result = self.execute_query(query, format='JSON')
 
-            if not result.strip():
+            if not result:
                 return pl.DataFrame()
 
-            # 임시 파일에 저장 후 읽기
-            import tempfile
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.tsv', delete=False) as f:
-                f.write(result)
-                temp_path = f.name
-
-            try:
-                df = pl.read_csv(temp_path, separator='\t')
+            # JSON 결과를 Polars DataFrame으로 변환
+            if isinstance(result, list) and len(result) > 0:
+                df = pl.DataFrame(result)
                 return df
-            finally:
-                Path(temp_path).unlink()
+            else:
+                return pl.DataFrame()
 
         except Exception as e:
             logger.error(f"Failed to convert to Polars: {e}")
